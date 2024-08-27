@@ -1,1 +1,16 @@
-spring.application.name=kafka-consumer-postgres
+spring:
+  application.name: "kafka-producer-consumer-postgres"
+  kafka:
+    boostrap-servers: "${KAFKA_BOOSTRAP_SERVER:http://localhost:19092}"
+    topics:
+      documents: "${DOCUMENTS_TOPIC:documents}"
+      orders: "${ORDERS_TOPIC:orders}"
+    consumer-group: "${CONSUMER_GROUP:kafka-postgres-group}"
+    consumer-group-batch: "${CONSUMER_GROUP_BATCH:kafka-postgres-group-batch}"
+    consumer:
+      max-poll-records: 500
+  datasource:
+    url: "${DB_URL:jdbc:postgresql://localhost:5432/kafka-poc}"
+    username: "kafka-poc"
+    password: "kafka-poc"
+    driver-class-name: org.postgresql.Driver
