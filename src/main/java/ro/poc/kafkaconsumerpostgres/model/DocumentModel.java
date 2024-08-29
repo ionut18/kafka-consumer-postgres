@@ -1,5 +1,6 @@
 package ro.poc.kafkaconsumerpostgres.model;
 
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -12,6 +13,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @NoArgsConstructor
 public class DocumentModel {
+    @NotNull
     private String title;
     private String description;
     private String author;
