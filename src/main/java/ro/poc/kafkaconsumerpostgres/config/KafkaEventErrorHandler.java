@@ -1,56 +1,73 @@
 package ro.poc.kafkaconsumerpostgres.config;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.common.TopicPartition;
 import org.springframework.kafka.listener.CommonErrorHandler;
 import org.springframework.kafka.listener.MessageListenerContainer;
-import org.springframework.messaging.handler.annotation.support.MethodArgumentNotValidException;
-import org.springframework.stereotype.Component;
-import org.springframework.validation.FieldError;
+import org.springframework.kafka.support.serializer.DeserializationException;
+import ro.poc.kafkaconsumerpostgres.model.KafkaEvent;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-@Component
 @Slf4j
 public class KafkaEventErrorHandler implements CommonErrorHandler {
 
     @Override
-    public boolean handleOne(Exception thrownException, ConsumerRecord<?, ?> record, Consumer<?, ?> consumer, MessageListenerContainer container) {
-        log.error("Got an exception", thrownException);
-        if (thrownException.getCause() instanceof MethodArgumentNotValidException) {
-            MethodArgumentNotValidException ex = (MethodArgumentNotValidException) thrownException.getCause();
-            Map<String, String> errors = new HashMap<>();
-            for (FieldError error : ex.getBindingResult().getFieldErrors()) {
-                errors.put(error.getField(), error.getDefaultMessage());
-            }
-            // Log or handle the validation errors
-            log.error("Validation errors: {}", errors);
+    public boolean handleOne(final Exception exception,
+                             final ConsumerRecord<?, ?> record,
+                             final Consumer<?, ?> consumer,
+                             final MessageListenerContainer container) {
+        handleError(exception, record, consumer);
+        return true;
+    }
+
+    private static void handleError(final Exception exception,
+                                    final ConsumerRecord<?, ?> record,
+                                    final Consumer<?, ?> consumer) {
+        if (exception.getCause() instanceof DeserializationException) {
+            log.error("DeserializationException error on topic {} with id {}", record.topic(), record.key(), exception);
+            final TopicPartition topicPartition = new TopicPartition(record.topic(), record.partition());
+            final long nextOffset = record.offset() + 1L;
+            consumer.seek(topicPartition, nextOffset);
+            consumer.commitSync();
         } else {
-            // Handle other exceptions
-            thrownException.printStackTrace();
+            log.error("Error on topic {}", record.topic(), exception);
+            throw new RuntimeException(exception);
         }
-        return false;
     }
 
+    //todo: not working
     @Override
-    public void handleRemaining(Exception thrownException, List<ConsumerRecord<?, ?>> records, Consumer<?, ?> consumer, MessageListenerContainer container) {
-        // Handle any other remaining exceptions
-        log.error("Handle remaining exceptions", thrownException);
-        thrownException.printStackTrace();
-    }
-
-    @Override
-    public void handleOtherException(Exception thrownException, Consumer<?, ?> consumer, MessageListenerContainer container, boolean batchListener) {
-        // Handle other types of exceptions
-        log.error("Handle other exceptions", thrownException);
-        thrownException.printStackTrace();
+    public void handleBatch(final Exception exception,
+                            final ConsumerRecords<?, ?> records,
+                            final Consumer<?, ?> consumer,
+                            final MessageListenerContainer container,
+                            final Runnable invokeListener) {
+        if (exception.getCause() instanceof DeserializationException) {
+            log.error("DeserializationException error on batch processing", exception);
+            for (final ConsumerRecord<?, ?> record : records) {
+                log.error("record {}", record);
+                try {
+                    KafkaEventDeserializer<KafkaEvent<?>> deserializer =  new KafkaEventDeserializer<>(new TypeReference<>() {});
+                    deserializer.deserialize(record.topic(), record.value() != null ? (byte[]) record.value() : null);
+                } catch (DeserializationException e) {
+                    log.error("DeserializationException error batch on topic {} on record with id {}", record.topic(), record.key(), e);
+                    TopicPartition topicPartition = new TopicPartition(record.topic(), record.partition());
+                    long nextOffset = record.offset() + 1;
+                    consumer.seek(topicPartition, nextOffset);
+                }
+            }
+            consumer.commitSync();
+        } else {
+            log.error("Error on batch processing", exception);
+            throw new RuntimeException(exception);
+        }
     }
 
     @Override
     public boolean isAckAfterHandle() {
-        return true; // Acknowledge the message after handling the error
+        return false;
     }
 }

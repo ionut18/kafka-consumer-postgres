@@ -1,5 +1,6 @@
 package ro.poc.kafkaconsumerpostgres.messaging;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -16,8 +17,8 @@ import ro.poc.kafkaconsumerpostgres.model.DocumentModel;
 import ro.poc.kafkaconsumerpostgres.model.KafkaEvent;
 import ro.poc.kafkaconsumerpostgres.service.DocumentService;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
@@ -31,33 +32,44 @@ public class DocumentConsumer {
 
     @KafkaListener(topics = "#{kafkaTopicsConfig.getDocumentsTopic()}",
             containerFactory = "kafkaDocumentListenerContainerFactory")
-    public void consume(KafkaEvent<DocumentModel> record) {
-        log.info("Received record: {}", record.getPayload());
-        BindingResult result = new BeanPropertyBindingResult(record.getPayload(), "record");
-        validator.validate(record, result);
+    public void consume(final ConsumerRecord<String, @Valid KafkaEvent<DocumentModel>> record,
+                        @Header(KafkaHeaders.GROUP_ID) final String groupId) {
+        final KafkaEvent<DocumentModel> kafkaEvent = record.value();
+        final BindingResult result = new BeanPropertyBindingResult(kafkaEvent, "kafkaEvent");
+        validator.validate(kafkaEvent, result);
         if (result.hasErrors()) {
-            log.error("Validation errors: {}", result.getAllErrors());
+            log.error("[{}] Validation errors: {}", groupId, result.getAllErrors());
+            return;
         }
-//        log.info("[{}] Consuming message {} ", groupId, record.value().toString());
-//        try {
-//            documentService.save(record.key(), record.value());
-//        } catch (Exception e) {
-//            log.error("[{}] Error consuming message {}", groupId, e.getMessage(), e);
-//        }
-//        log.info("[{}] Finished consuming message {} ", groupId, record.value().toString());
+        log.debug("[{}] Consuming message {}", groupId, kafkaEvent);
+        try {
+            documentService.save(record.key(), record.value());
+        } catch (Exception e) {
+            log.error("[{}] Error consuming message {}", groupId, e.getMessage(), e);
+        }
     }
 
-//    @KafkaListener(topics = "#{kafkaTopicsConfig.getDocumentsTopic()}",
-//            groupId = "#{kafkaTopicsConfig.getConsumerGroupBatch()}",
-//            containerFactory = "kafkaDocumentBatchListenerContainerFactory")
-//    public void consumeBatch(final List<ConsumerRecord<String, KafkaEvent<DocumentModel>>> records) {
-//        log.info("[{}] Consuming {} messages", kafkaTopicsConfig.getConsumerGroupBatch(), records.size());
-//        try {
-//            records.forEach(record -> log.info(record.value().toString()));
-//            documentService.saveAll(records);
-//        } catch (Exception e) {
-//            log.error("[{}] Error consuming message {}", kafkaTopicsConfig.getConsumerGroupBatch(), e.getMessage(), e);
-//        }
-//        log.info("[{}] Finished consuming {} messages", kafkaTopicsConfig.getConsumerGroupBatch(), records.size());
-//    }
+    @KafkaListener(topics = "#{kafkaTopicsConfig.getDocumentsTopic()}",
+            groupId = "#{kafkaTopicsConfig.getConsumerGroupBatch()}",
+            containerFactory = "kafkaDocumentBatchListenerContainerFactory")
+    public void consumeBatch(final List<ConsumerRecord<String, @Valid KafkaEvent<DocumentModel>>> records) {
+        log.debug("[{}] Consuming {} messages", kafkaTopicsConfig.getConsumerGroupBatch(), records.size());
+        final List<ConsumerRecord<String, KafkaEvent<DocumentModel>>> validRecords = new ArrayList<>();
+        try {
+            records.forEach(record -> {
+                final KafkaEvent<DocumentModel> kafkaEvent = record.value();
+                final BindingResult result = new BeanPropertyBindingResult(kafkaEvent, "kafkaEvent");
+                validator.validate(kafkaEvent, result);
+                if (result.hasErrors()) {
+                    log.error("[{}] Validation errors: {}", kafkaTopicsConfig.getConsumerGroupBatch(), result.getAllErrors());
+                } else {
+                    validRecords.add(record);
+                }
+                log.debug("[{}] Consuming message {}", kafkaTopicsConfig.getConsumerGroupBatch(), record);
+            });
+            documentService.saveAll(validRecords);
+        } catch (Exception e) {
+            log.error("[{}] Error consuming message {}", kafkaTopicsConfig.getConsumerGroupBatch(), e.getMessage(), e);
+        }
+    }
 }

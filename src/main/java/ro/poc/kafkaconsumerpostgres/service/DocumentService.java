@@ -2,6 +2,7 @@ package ro.poc.kafkaconsumerpostgres.service;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.stereotype.Service;
 import ro.poc.kafkaconsumerpostgres.entity.Document;
@@ -17,6 +18,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class DocumentService {
 
     private final DocumentRepository documentRepository;
@@ -24,6 +26,7 @@ public class DocumentService {
 
     @Transactional
     public void save(final String key, final KafkaEvent<DocumentModel> event) {
+        log.debug("Saving document: {}", event);
         final DocumentEvent documentEvent = DocumentMapper.toDocumentEvent(key, event);
         documentEventRepository.save(documentEvent);
         final Document document = DocumentMapper.toDocument(key, event.getPayload());
@@ -32,6 +35,7 @@ public class DocumentService {
 
     @Transactional
     public void saveAll(final List<ConsumerRecord<String, KafkaEvent<DocumentModel>>> records) {
+        log.debug("Saving {} documents:", records.size());
         final List<DocumentEvent> documentEvents = records.stream()
                 .map(record -> DocumentMapper.toDocumentEvent(record.key(), record.value()))
                 .collect(Collectors.toList());
