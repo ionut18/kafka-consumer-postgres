@@ -10,6 +10,9 @@ import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
+import org.springframework.kafka.listener.CommonErrorHandler;
+import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
+import org.springframework.kafka.support.serializer.JsonDeserializer;
 import ro.poc.kafkaconsumerpostgres.model.DocumentModel;
 import ro.poc.kafkaconsumerpostgres.model.KafkaEvent;
 import ro.poc.kafkaconsumerpostgres.model.OrderModel;
@@ -29,10 +32,16 @@ public class KafkaConsumerConfig {
         Map<String, Object> props = new HashMap<>();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaTopicsConfig.getBootstrapServers());
         props.put(ConsumerConfig.GROUP_ID_CONFIG, kafkaTopicsConfig.getConsumerGroup());
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
+        props.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, KafkaEventDeserializer.class.getName());
+        props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, KafkaEvent.class.getName());
+        props.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
 
         return new DefaultKafkaConsumerFactory<>(props,
                 new StringDeserializer(),
-                new KafkaEventDeserializer<>(new TypeReference<>() {}));
+                new ErrorHandlingDeserializer<>(new KafkaEventDeserializer<>(new TypeReference<>() {
+                })));
     }
 
     @Bean
@@ -43,21 +52,29 @@ public class KafkaConsumerConfig {
 
         return new DefaultKafkaConsumerFactory<>(props,
                 new StringDeserializer(),
-                new KafkaEventDeserializer<>(new TypeReference<>() {}));
+                new KafkaEventDeserializer<>(new TypeReference<>() {
+                }));
     }
 
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, KafkaEvent<DocumentModel>> kafkaDocumentListenerContainerFactory() {
+    public CommonErrorHandler commonErrorHandler() {
+        return new KafkaEventErrorHandler();
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, KafkaEvent<DocumentModel>> kafkaDocumentListenerContainerFactory(final CommonErrorHandler commonErrorHandler) {
         ConcurrentKafkaListenerContainerFactory<String, KafkaEvent<DocumentModel>> factory = new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(documentConsumerFactory());
+        factory.setCommonErrorHandler(commonErrorHandler);
         return factory;
     }
 
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, KafkaEvent<DocumentModel>> kafkaDocumentBatchListenerContainerFactory() {
+    public ConcurrentKafkaListenerContainerFactory<String, KafkaEvent<DocumentModel>> kafkaDocumentBatchListenerContainerFactory(final CommonErrorHandler commonErrorHandler) {
         ConcurrentKafkaListenerContainerFactory<String, KafkaEvent<DocumentModel>> factory = new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(documentConsumerFactory());
         factory.setBatchListener(true);
+        factory.setCommonErrorHandler(commonErrorHandler);
         return factory;
     }
 
