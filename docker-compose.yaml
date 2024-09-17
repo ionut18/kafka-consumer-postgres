@@ -38,8 +38,8 @@ services:
     ports:
       - '8081:8080'
     environment:
-      - KAFKA_CLUSTERS_0_NAME=kafka-poc
-      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
+      - KAFKA_CLUSTERS_0_NAME=kafka-tst
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=108.141.135.61:9094
       - DYNAMIC_CONFIG_ENABLED=true
     depends_on:
       - kafka

@@ -1,4 +1,6 @@
 spring:
+  kafka:
+    boostrap-servers: "http://108.141.135.61:9094"
   datasource:
     url: "jdbc:postgresql://20.71.157.209:5532/postgres"
     username: "postgres"
